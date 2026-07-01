@@ -10,15 +10,20 @@ import {
   X,
 } from 'lucide-vue-next'
 import {
-  backspaceInput,
-  clearInput,
-  inputDecimal,
-  inputDigit,
-  toggleSign,
-} from './calculatorInput'
+  createInitialState,
+  getOperatorLabel,
+  pressBackspace,
+  pressBinaryOperator,
+  pressClear,
+  pressClearEntry,
+  pressDecimal,
+  pressDigit,
+  pressEquals,
+  pressSign,
+  pressUnaryOperator,
+} from './calculatorEngine'
 
-const displayValue = ref('0')
-const shouldReplaceInput = ref(false)
+const calculatorState = ref(createInitialState())
 
 const digitKeys = {
   zero: '0',
@@ -33,17 +38,8 @@ const digitKeys = {
   nine: '9',
 }
 
-const deferredInputKeys = new Set([
-  'add',
-  'subtract',
-  'multiply',
-  'divide',
-  'equals',
-  'percent',
-  'reciprocal',
-  'square',
-  'sqrt',
-])
+const binaryOperatorKeys = new Set(['add', 'subtract', 'multiply', 'divide'])
+const unaryOperatorKeys = new Set(['percent', 'reciprocal', 'square', 'sqrt'])
 
 const memoryKeys = [
   { label: 'MC', muted: true },
@@ -80,75 +76,75 @@ const keys = [
   { id: 'equals', label: '=', class: 'equals' },
 ]
 
+const displayValue = computed(() => calculatorState.value.displayValue)
+
 const displayClass = computed(() => ({
   compact: displayValue.value.length > 12,
   dense: displayValue.value.length > 16,
+  error: calculatorState.value.isError,
 }))
 
-function commitDisplay(nextValue) {
-  displayValue.value = nextValue
-  shouldReplaceInput.value = false
-}
+const expressionText = computed(() => {
+  const { storedValue, pendingOperator, isError } = calculatorState.value
 
-function handleDigit(digit) {
-  commitDisplay(inputDigit(displayValue.value, digit, shouldReplaceInput.value))
-}
+  if (isError || storedValue === null || !pendingOperator) {
+    return ''
+  }
 
-function handleDecimal() {
-  commitDisplay(inputDecimal(displayValue.value, shouldReplaceInput.value))
-}
-
-function handleBackspace() {
-  commitDisplay(backspaceInput(displayValue.value, shouldReplaceInput.value))
-}
-
-function handleClear() {
-  commitDisplay(clearInput())
-}
-
-function handleClearEntry() {
-  commitDisplay(clearInput())
-}
-
-function handleSign() {
-  commitDisplay(toggleSign(displayValue.value))
-}
-
-function handleDeferredInput() {
-  shouldReplaceInput.value = true
-}
+  return `${storedValue} ${getOperatorLabel(pendingOperator)}`
+})
 
 function handleKeyClick(key) {
   const digit = digitKeys[key.id]
 
   if (digit !== undefined) {
-    handleDigit(digit)
+    calculatorState.value = pressDigit(calculatorState.value, digit)
     return
   }
 
   switch (key.id) {
     case 'decimal':
-      handleDecimal()
+      calculatorState.value = pressDecimal(calculatorState.value)
       break
     case 'sign':
-      handleSign()
+      calculatorState.value = pressSign(calculatorState.value)
       break
     case 'clear':
-      handleClear()
+      calculatorState.value = pressClear()
       break
     case 'ce':
-      handleClearEntry()
+      calculatorState.value = pressClearEntry(calculatorState.value)
+      break
+    case 'equals':
+      calculatorState.value = pressEquals(calculatorState.value)
       break
     case undefined:
       if (key.label === 'backspace') {
-        handleBackspace()
+        calculatorState.value = pressBackspace(calculatorState.value)
       }
       break
     default:
-      if (deferredInputKeys.has(key.id)) {
-        handleDeferredInput()
+      if (binaryOperatorKeys.has(key.id)) {
+        calculatorState.value = pressBinaryOperator(calculatorState.value, key.id)
+      }
+
+      if (unaryOperatorKeys.has(key.id)) {
+        calculatorState.value = pressUnaryOperator(calculatorState.value, key.id)
       }
   }
+}
+
+function getKeyClass(key) {
+  return [
+    'calc-key',
+    key.class,
+    {
+      active:
+        binaryOperatorKeys.has(key.id) &&
+        calculatorState.value.pendingOperator === key.id &&
+        calculatorState.value.isNewInput,
+    },
+  ]
 }
 </script>
 
@@ -177,6 +173,7 @@ function handleKeyClick(key) {
         </div>
 
         <section class="display" aria-label="当前显示值">
+          <div class="expression-line" aria-live="polite">{{ expressionText }}</div>
           <output :class="displayClass" aria-live="polite">{{ displayValue }}</output>
         </section>
 
@@ -195,7 +192,7 @@ function handleKeyClick(key) {
           <button
             v-for="key in keys"
             :key="key.id || key.label"
-            :class="['calc-key', key.class]"
+            :class="getKeyClass(key)"
             :aria-label="key.aria || key.label"
             @click="handleKeyClick(key)"
             type="button"

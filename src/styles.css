@@ -136,10 +136,24 @@ button {
 
 .display {
   display: flex;
+  flex-direction: column;
   align-items: flex-end;
   justify-content: flex-end;
   min-width: 0;
   padding: 0 15px 15px 0;
+}
+
+.expression-line {
+  width: 100%;
+  min-height: 24px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  color: #6f6f6f;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .display output {
@@ -161,6 +175,12 @@ button {
 
 .display output.dense {
   font-size: 44px;
+}
+
+.display output.error {
+  color: #1c1c1c;
+  font-size: 36px;
+  font-weight: 500;
 }
 
 .memory-row {
@@ -234,6 +254,11 @@ button {
 .calc-key.soft:hover,
 .calc-key.operator:hover {
   background: #ededed;
+}
+
+.calc-key.operator.active {
+  border-color: #c8c8c8;
+  background: #e6e6e6;
 }
 
 .calc-key.math {
