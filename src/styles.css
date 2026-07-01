@@ -155,6 +155,14 @@ button {
   white-space: nowrap;
 }
 
+.display output.compact {
+  font-size: 54px;
+}
+
+.display output.dense {
+  font-size: 44px;
+}
+
 .memory-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

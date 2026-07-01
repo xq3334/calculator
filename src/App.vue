@@ -1,4 +1,5 @@
 <script setup>
+import { computed, ref } from 'vue'
 import {
   Calculator,
   Delete,
@@ -8,6 +9,41 @@ import {
   Square,
   X,
 } from 'lucide-vue-next'
+import {
+  backspaceInput,
+  clearInput,
+  inputDecimal,
+  inputDigit,
+  toggleSign,
+} from './calculatorInput'
+
+const displayValue = ref('0')
+const shouldReplaceInput = ref(false)
+
+const digitKeys = {
+  zero: '0',
+  one: '1',
+  two: '2',
+  three: '3',
+  four: '4',
+  five: '5',
+  six: '6',
+  seven: '7',
+  eight: '8',
+  nine: '9',
+}
+
+const deferredInputKeys = new Set([
+  'add',
+  'subtract',
+  'multiply',
+  'divide',
+  'equals',
+  'percent',
+  'reciprocal',
+  'square',
+  'sqrt',
+])
 
 const memoryKeys = [
   { label: 'MC', muted: true },
@@ -43,6 +79,77 @@ const keys = [
   { id: 'decimal', label: '.' },
   { id: 'equals', label: '=', class: 'equals' },
 ]
+
+const displayClass = computed(() => ({
+  compact: displayValue.value.length > 12,
+  dense: displayValue.value.length > 16,
+}))
+
+function commitDisplay(nextValue) {
+  displayValue.value = nextValue
+  shouldReplaceInput.value = false
+}
+
+function handleDigit(digit) {
+  commitDisplay(inputDigit(displayValue.value, digit, shouldReplaceInput.value))
+}
+
+function handleDecimal() {
+  commitDisplay(inputDecimal(displayValue.value, shouldReplaceInput.value))
+}
+
+function handleBackspace() {
+  commitDisplay(backspaceInput(displayValue.value, shouldReplaceInput.value))
+}
+
+function handleClear() {
+  commitDisplay(clearInput())
+}
+
+function handleClearEntry() {
+  commitDisplay(clearInput())
+}
+
+function handleSign() {
+  commitDisplay(toggleSign(displayValue.value))
+}
+
+function handleDeferredInput() {
+  shouldReplaceInput.value = true
+}
+
+function handleKeyClick(key) {
+  const digit = digitKeys[key.id]
+
+  if (digit !== undefined) {
+    handleDigit(digit)
+    return
+  }
+
+  switch (key.id) {
+    case 'decimal':
+      handleDecimal()
+      break
+    case 'sign':
+      handleSign()
+      break
+    case 'clear':
+      handleClear()
+      break
+    case 'ce':
+      handleClearEntry()
+      break
+    case undefined:
+      if (key.label === 'backspace') {
+        handleBackspace()
+      }
+      break
+    default:
+      if (deferredInputKeys.has(key.id)) {
+        handleDeferredInput()
+      }
+  }
+}
 </script>
 
 <template>
@@ -70,7 +177,7 @@ const keys = [
         </div>
 
         <section class="display" aria-label="当前显示值">
-          <output>0</output>
+          <output :class="displayClass" aria-live="polite">{{ displayValue }}</output>
         </section>
 
         <nav class="memory-row" aria-label="内存操作">
@@ -90,6 +197,7 @@ const keys = [
             :key="key.id || key.label"
             :class="['calc-key', key.class]"
             :aria-label="key.aria || key.label"
+            @click="handleKeyClick(key)"
             type="button"
           >
             <component :is="key.icon" v-if="key.icon" :size="22" stroke-width="1.7" />
