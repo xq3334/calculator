@@ -144,5 +144,39 @@ assert.equal(state.displayValue, '0.5')
 
 state = pressSign(pressDigit(createInitialState(), '9'))
 assert.equal(state.displayValue, '-9')
+assert.equal(state.expressionValue, 'negate(9)')
+
+state = pressSign(state)
+assert.equal(state.displayValue, '9')
+assert.equal(state.expressionValue, 'negate(negate(9))')
+
+state = createInitialState()
+state = pressDigit(state, '9')
+state = pressUnaryOperator(state, 'sqrt')
+state = pressUnaryOperator(state, 'sqrt')
+assert.equal(state.expressionValue, '√(√(9))')
+
+state = createInitialState()
+state = pressDigit(state, '9')
+state = pressUnaryOperator(state, 'sqrt')
+state = pressBinaryOperator(state, 'multiply')
+state = pressDigit(state, '2')
+state = pressEquals(state)
+assert.deepEqual(state.completedEntry, {
+  expression: '√(9) × 2 =',
+  result: '6',
+})
+
+state = createInitialState()
+state = pressDigit(state, '1')
+state = pressDigit(state, '0')
+state = pressSign(state)
+state = pressBinaryOperator(state, 'add')
+state = pressDigit(state, '2')
+state = pressEquals(state)
+assert.deepEqual(state.completedEntry, {
+  expression: 'negate(10) + 2 =',
+  result: '-8',
+})
 
 console.log('calculator engine tests passed')

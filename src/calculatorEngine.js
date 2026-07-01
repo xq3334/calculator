@@ -11,7 +11,9 @@ const binaryOperatorLabels = {
 export function createInitialState() {
   return {
     displayValue: INITIAL_DISPLAY,
+    expressionValue: INITIAL_DISPLAY,
     storedValue: null,
+    storedExpression: null,
     pendingOperator: null,
     lastOperation: null,
     isNewInput: true,
@@ -170,7 +172,9 @@ function applyPendingOperation(state, rightValue = toNumber(state.displayValue))
     state: {
       ...state,
       displayValue: formatNumber(result.value),
+      expressionValue: formatNumber(result.value),
       storedValue: result.value,
+      storedExpression: formatNumber(result.value),
     },
     resultNumber: result.value,
   }
@@ -182,6 +186,7 @@ export function pressDigit(state, digit) {
   return {
     ...currentState,
     displayValue: inputDigit(currentState.displayValue, digit, currentState.isNewInput),
+    expressionValue: inputDigit(currentState.displayValue, digit, currentState.isNewInput),
     isNewInput: false,
   }
 }
@@ -192,6 +197,7 @@ export function pressDecimal(state) {
   return {
     ...currentState,
     displayValue: inputDecimal(currentState.displayValue, currentState.isNewInput),
+    expressionValue: inputDecimal(currentState.displayValue, currentState.isNewInput),
     isNewInput: false,
   }
 }
@@ -204,6 +210,7 @@ export function pressBackspace(state) {
   return {
     ...state,
     displayValue: backspaceInput(state.displayValue, state.isNewInput),
+    expressionValue: backspaceInput(state.displayValue, state.isNewInput),
     isNewInput: false,
   }
 }
@@ -220,6 +227,7 @@ export function pressClearEntry(state) {
   return {
     ...state,
     displayValue: clearInput(),
+    expressionValue: clearInput(),
     isNewInput: true,
   }
 }
@@ -232,6 +240,7 @@ export function pressSign(state) {
   return {
     ...state,
     displayValue: toggleSign(state.displayValue),
+    expressionValue: wrapUnaryExpression('sign', state.expressionValue ?? state.displayValue),
   }
 }
 
@@ -257,14 +266,19 @@ export function pressBinaryOperator(state, operator) {
       ...applied.state,
       pendingOperator: operator,
       storedValue: applied.resultNumber,
+      storedExpression: applied.state.expressionValue,
       lastOperation: null,
       isNewInput: true,
     }
   }
 
+  const currentExpression = state.expressionValue ?? formatNumber(currentValue)
+
   return {
     ...state,
     storedValue: state.storedValue === null || !state.isNewInput ? currentValue : state.storedValue,
+    storedExpression:
+      state.storedExpression === null || !state.isNewInput ? currentExpression : state.storedExpression,
     pendingOperator: operator,
     lastOperation: null,
     isNewInput: true,
@@ -278,8 +292,11 @@ export function pressEquals(state) {
 
   if (state.pendingOperator) {
     const rightValue = state.isNewInput ? state.storedValue : toNumber(state.displayValue)
+    const rightExpression = state.isNewInput
+      ? state.storedExpression ?? formatNumber(rightValue)
+      : state.expressionValue ?? formatNumber(rightValue)
     const applied = applyPendingOperation(state, rightValue)
-    const expression = `${formatNumber(state.storedValue)} ${getOperatorLabel(state.pendingOperator)} ${formatNumber(rightValue)} =`
+    const expression = `${state.storedExpression ?? formatNumber(state.storedValue)} ${getOperatorLabel(state.pendingOperator)} ${rightExpression} =`
 
     if (applied.state.isError) {
       return applied.state
@@ -292,6 +309,7 @@ export function pressEquals(state) {
       lastOperation: {
         operator: state.pendingOperator,
         operand: rightValue,
+        operandExpression: rightExpression,
       },
       isNewInput: true,
       completedEntry: {
@@ -304,7 +322,7 @@ export function pressEquals(state) {
   if (state.lastOperation) {
     const leftValue = toNumber(state.displayValue)
     const result = calculate(leftValue, state.lastOperation.operator, state.lastOperation.operand)
-    const expression = `${formatNumber(leftValue)} ${getOperatorLabel(state.lastOperation.operator)} ${formatNumber(state.lastOperation.operand)} =`
+    const expression = `${state.expressionValue ?? formatNumber(leftValue)} ${getOperatorLabel(state.lastOperation.operator)} ${state.lastOperation.operandExpression ?? formatNumber(state.lastOperation.operand)} =`
 
     if (result.error) {
       return errorState(result.error)
@@ -313,6 +331,7 @@ export function pressEquals(state) {
     return {
       ...state,
       displayValue: formatNumber(result.value),
+      expressionValue: formatNumber(result.value),
       isNewInput: true,
       completedEntry: {
         expression,
@@ -366,10 +385,30 @@ export function pressUnaryOperator(state, operator) {
   return {
     ...state,
     displayValue: formatNumber(result),
+    expressionValue: wrapUnaryExpression(operator, state.expressionValue ?? state.displayValue),
     isNewInput: false,
   }
 }
 
 export function getOperatorLabel(operator) {
   return binaryOperatorLabels[operator] || ''
+}
+
+export function wrapUnaryExpression(operator, expression) {
+  const valueExpression = expression || INITIAL_DISPLAY
+
+  switch (operator) {
+    case 'sign':
+      return `negate(${valueExpression})`
+    case 'reciprocal':
+      return `1/(${valueExpression})`
+    case 'square':
+      return `sqr(${valueExpression})`
+    case 'sqrt':
+      return `√(${valueExpression})`
+    case 'percent':
+      return valueExpression
+    default:
+      return valueExpression
+  }
 }

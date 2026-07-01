@@ -93,13 +93,23 @@ const displayClass = computed(() => ({
 }))
 
 const expressionText = computed(() => {
-  const { storedValue, pendingOperator, isError } = calculatorState.value
+  const { expressionValue, isError, pendingOperator, storedExpression, storedValue } = calculatorState.value
 
-  if (isError || storedValue === null || !pendingOperator) {
+  if (isError) {
     return ''
   }
 
-  return `${formatDisplayValue(formatNumber(storedValue))} ${getOperatorLabel(pendingOperator)}`
+  if (pendingOperator && storedValue !== null) {
+    const leftExpression = storedExpression ?? formatDisplayValue(formatNumber(storedValue))
+
+    if (calculatorState.value.isNewInput) {
+      return `${leftExpression} ${getOperatorLabel(pendingOperator)}`
+    }
+
+    return `${leftExpression} ${getOperatorLabel(pendingOperator)} ${expressionValue}`
+  }
+
+  return expressionValue && expressionValue !== displayValue.value ? expressionValue : ''
 })
 
 const formattedMemory = computed(() =>
@@ -132,6 +142,7 @@ function setDisplayValue(value) {
   calculatorState.value = {
     ...calculatorState.value,
     displayValue: formatNumber(toNumber(value)),
+    expressionValue: formatNumber(toNumber(value)),
     isError: false,
     isNewInput: false,
   }
@@ -370,11 +381,11 @@ function getKeyClass(key) {
             <button
               v-for="item in historyItems"
               :key="item.id"
-            class="history-entry"
-            @click="recallHistory(item.result)"
-            @keydown.space.prevent
-            type="button"
-          >
+              class="history-entry"
+              @click="recallHistory(item.result)"
+              @keydown.space.prevent
+              type="button"
+            >
               <span>{{ item.expression }}</span>
               <strong>{{ formatDisplayValue(item.result) }}</strong>
             </button>
