@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Calculator,
   Delete,
+  Trash2,
   Menu,
   Minus,
   PanelRightOpen,
@@ -21,9 +22,15 @@ import {
   pressEquals,
   pressSign,
   pressUnaryOperator,
+  formatDisplayValue,
+  formatNumber,
+  toNumber,
 } from './calculatorEngine'
 
 const calculatorState = ref(createInitialState())
+const activePanel = ref('history')
+const historyItems = ref([])
+const memoryValue = ref(null)
 
 const digitKeys = {
   zero: '0',
@@ -42,11 +49,11 @@ const binaryOperatorKeys = new Set(['add', 'subtract', 'multiply', 'divide'])
 const unaryOperatorKeys = new Set(['percent', 'reciprocal', 'square', 'sqrt'])
 
 const memoryKeys = [
-  { label: 'MC', muted: true },
-  { label: 'MR', muted: true },
-  { label: 'M+' },
-  { label: 'M-' },
-  { label: 'MS' },
+  { id: 'memoryClear', label: 'MC' },
+  { id: 'memoryRecall', label: 'MR' },
+  { id: 'memoryAdd', label: 'M+' },
+  { id: 'memorySubtract', label: 'M-' },
+  { id: 'memoryStore', label: 'MS' },
 ]
 
 const keys = [
@@ -77,10 +84,11 @@ const keys = [
 ]
 
 const displayValue = computed(() => calculatorState.value.displayValue)
+const formattedDisplayValue = computed(() => formatDisplayValue(displayValue.value))
 
 const displayClass = computed(() => ({
-  compact: displayValue.value.length > 12,
-  dense: displayValue.value.length > 16,
+  compact: formattedDisplayValue.value.length > 12,
+  dense: formattedDisplayValue.value.length > 16,
   error: calculatorState.value.isError,
 }))
 
@@ -91,48 +99,170 @@ const expressionText = computed(() => {
     return ''
   }
 
-  return `${storedValue} ${getOperatorLabel(pendingOperator)}`
+  return `${formatDisplayValue(formatNumber(storedValue))} ${getOperatorLabel(pendingOperator)}`
 })
 
-function handleKeyClick(key) {
+const formattedMemory = computed(() =>
+  memoryValue.value === null ? '' : formatDisplayValue(formatNumber(memoryValue.value)),
+)
+
+const hasMemory = computed(() => memoryValue.value !== null)
+
+function commitState(nextState) {
+  calculatorState.value = nextState
+
+  if (nextState.completedEntry) {
+    historyItems.value = [
+      {
+        id: `${Date.now()}-${historyItems.value.length}`,
+        expression: nextState.completedEntry.expression,
+        result: nextState.completedEntry.result,
+      },
+      ...historyItems.value,
+    ]
+
+    calculatorState.value = {
+      ...nextState,
+      completedEntry: null,
+    }
+  }
+}
+
+function setDisplayValue(value) {
+  calculatorState.value = {
+    ...calculatorState.value,
+    displayValue: formatNumber(toNumber(value)),
+    isError: false,
+    isNewInput: false,
+  }
+}
+
+function handleMemoryClick(action) {
+  if (calculatorState.value.isError) {
+    return
+  }
+
+  const currentValue = toNumber(calculatorState.value.displayValue)
+
+  switch (action) {
+    case 'memoryClear':
+      memoryValue.value = null
+      break
+    case 'memoryRecall':
+      if (hasMemory.value) {
+        setDisplayValue(memoryValue.value)
+      }
+      break
+    case 'memoryStore':
+      memoryValue.value = currentValue
+      activePanel.value = 'memory'
+      break
+    case 'memoryAdd':
+      memoryValue.value = (memoryValue.value ?? 0) + currentValue
+      activePanel.value = 'memory'
+      break
+    case 'memorySubtract':
+      memoryValue.value = (memoryValue.value ?? 0) - currentValue
+      activePanel.value = 'memory'
+      break
+  }
+}
+
+function recallHistory(result) {
+  setDisplayValue(result)
+}
+
+function clearHistory() {
+  historyItems.value = []
+}
+
+function clearMemory() {
+  memoryValue.value = null
+}
+
+function handleKeyAction(key) {
   const digit = digitKeys[key.id]
 
   if (digit !== undefined) {
-    calculatorState.value = pressDigit(calculatorState.value, digit)
+    commitState(pressDigit(calculatorState.value, digit))
     return
   }
 
   switch (key.id) {
     case 'decimal':
-      calculatorState.value = pressDecimal(calculatorState.value)
+      commitState(pressDecimal(calculatorState.value))
       break
     case 'sign':
-      calculatorState.value = pressSign(calculatorState.value)
+      commitState(pressSign(calculatorState.value))
       break
     case 'clear':
-      calculatorState.value = pressClear()
+      commitState(pressClear())
       break
     case 'ce':
-      calculatorState.value = pressClearEntry(calculatorState.value)
+      commitState(pressClearEntry(calculatorState.value))
       break
     case 'equals':
-      calculatorState.value = pressEquals(calculatorState.value)
+      commitState(pressEquals(calculatorState.value))
       break
     case undefined:
       if (key.label === 'backspace') {
-        calculatorState.value = pressBackspace(calculatorState.value)
+        commitState(pressBackspace(calculatorState.value))
       }
       break
     default:
       if (binaryOperatorKeys.has(key.id)) {
-        calculatorState.value = pressBinaryOperator(calculatorState.value, key.id)
+        commitState(pressBinaryOperator(calculatorState.value, key.id))
       }
 
       if (unaryOperatorKeys.has(key.id)) {
-        calculatorState.value = pressUnaryOperator(calculatorState.value, key.id)
+        commitState(pressUnaryOperator(calculatorState.value, key.id))
       }
   }
 }
+
+function handleKeyboard(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) {
+    return
+  }
+
+  const keyboardMap = {
+    '+': { id: 'add' },
+    '-': { id: 'subtract' },
+    '*': { id: 'multiply' },
+    '/': { id: 'divide' },
+    Enter: { id: 'equals' },
+    '=': { id: 'equals' },
+    '.': { id: 'decimal' },
+    '%': { id: 'percent' },
+    Escape: { id: 'clear' },
+    Delete: { id: 'ce' },
+    Backspace: { label: 'backspace' },
+  }
+
+  let action = null
+
+  if (/^\d$/.test(event.key)) {
+    const id = Object.keys(digitKeys).find((key) => digitKeys[key] === event.key)
+    action = { id }
+  } else {
+    action = keyboardMap[event.key]
+  }
+
+  if (!action) {
+    return
+  }
+
+  event.preventDefault()
+  handleKeyAction(action)
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyboard)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyboard)
+})
 
 function getKeyClass(key) {
   return [
@@ -174,14 +304,17 @@ function getKeyClass(key) {
 
         <section class="display" aria-label="当前显示值">
           <div class="expression-line" aria-live="polite">{{ expressionText }}</div>
-          <output :class="displayClass" aria-live="polite">{{ displayValue }}</output>
+          <output :class="displayClass" aria-live="polite">{{ formattedDisplayValue }}</output>
         </section>
 
         <nav class="memory-row" aria-label="内存操作">
           <button
             v-for="item in memoryKeys"
             :key="item.label"
-            :class="{ muted: item.muted }"
+            :class="{ muted: !hasMemory && ['memoryClear', 'memoryRecall'].includes(item.id) }"
+            :disabled="!hasMemory && ['memoryClear', 'memoryRecall'].includes(item.id)"
+            @click="handleMemoryClick(item.id)"
+            @keydown.space.prevent
             type="button"
           >
             {{ item.label }}
@@ -194,7 +327,8 @@ function getKeyClass(key) {
             :key="key.id || key.label"
             :class="getKeyClass(key)"
             :aria-label="key.aria || key.label"
-            @click="handleKeyClick(key)"
+            @click="handleKeyAction(key)"
+            @keydown.space.prevent
             type="button"
           >
             <component :is="key.icon" v-if="key.icon" :size="22" stroke-width="1.7" />
@@ -210,10 +344,74 @@ function getKeyClass(key) {
 
       <aside class="history-panel" aria-label="历史记录和记忆">
         <div class="tabs" role="tablist" aria-label="侧边栏">
-          <button class="active" role="tab" aria-selected="true" type="button">历史记录</button>
-          <button role="tab" aria-selected="false" type="button">记忆</button>
+          <button
+            :class="{ active: activePanel === 'history' }"
+            role="tab"
+            :aria-selected="activePanel === 'history'"
+            @click="activePanel = 'history'"
+            type="button"
+          >
+            历史记录
+          </button>
+          <button
+            :class="{ active: activePanel === 'memory' }"
+            role="tab"
+            :aria-selected="activePanel === 'memory'"
+            @click="activePanel = 'memory'"
+            type="button"
+          >
+            记忆
+          </button>
         </div>
-        <p class="empty-state">尚无历史记录。</p>
+
+        <section v-if="activePanel === 'history'" class="panel-content" aria-label="历史记录列表">
+          <p v-if="historyItems.length === 0" class="empty-state">尚无历史记录。</p>
+          <div v-else class="entry-list">
+            <button
+              v-for="item in historyItems"
+              :key="item.id"
+            class="history-entry"
+            @click="recallHistory(item.result)"
+            @keydown.space.prevent
+            type="button"
+          >
+              <span>{{ item.expression }}</span>
+              <strong>{{ formatDisplayValue(item.result) }}</strong>
+            </button>
+            <button
+              class="clear-panel-button"
+              @click="clearHistory"
+              @keydown.space.prevent
+              aria-label="清空历史记录"
+              type="button"
+            >
+              <Trash2 :size="20" />
+            </button>
+          </div>
+        </section>
+
+        <section v-else class="panel-content" aria-label="记忆列表">
+          <p v-if="!hasMemory" class="empty-state">内存中没有内容。</p>
+          <div v-else class="entry-list">
+            <button
+              class="memory-entry"
+              @click="setDisplayValue(memoryValue)"
+              @keydown.space.prevent
+              type="button"
+            >
+              <strong>{{ formattedMemory }}</strong>
+            </button>
+            <button
+              class="clear-panel-button"
+              @click="clearMemory"
+              @keydown.space.prevent
+              aria-label="清空记忆"
+              type="button"
+            >
+              <Trash2 :size="20" />
+            </button>
+          </div>
+        </section>
       </aside>
     </section>
   </main>

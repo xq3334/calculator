@@ -3,6 +3,7 @@ import {
   backspaceInput,
   clearInput,
   createInitialState,
+  formatDisplayValue,
   inputDecimal,
   inputDigit,
   pressBackspace,
@@ -38,6 +39,8 @@ assert.equal(backspaceInput('-1'), '0')
 assert.equal(backspaceInput('123', true), '0')
 
 assert.equal(clearInput(), '0')
+assert.equal(formatDisplayValue('1234567.89'), '1,234,567.89')
+assert.equal(formatDisplayValue('-1234567'), '-1,234,567')
 
 let state = createInitialState()
 state = pressDigit(state, '1')
@@ -46,9 +49,17 @@ state = pressBinaryOperator(state, 'add')
 state = pressDigit(state, '3')
 state = pressEquals(state)
 assert.equal(state.displayValue, '15')
+assert.deepEqual(state.completedEntry, {
+  expression: '12 + 3 =',
+  result: '15',
+})
 
 state = pressEquals(state)
 assert.equal(state.displayValue, '18')
+assert.deepEqual(state.completedEntry, {
+  expression: '15 + 3 =',
+  result: '18',
+})
 
 state = createInitialState()
 state = pressDigit(state, '1')

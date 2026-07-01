@@ -81,11 +81,11 @@ export function clearInput() {
   return INITIAL_DISPLAY
 }
 
-function toNumber(value) {
+export function toNumber(value) {
   return Number(String(value).replace(/,/g, ''))
 }
 
-function formatNumber(value) {
+export function formatNumber(value) {
   if (!Number.isFinite(value)) {
     return '错误'
   }
@@ -102,6 +102,25 @@ function formatNumber(value) {
   }
 
   return text.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')
+}
+
+export function formatDisplayValue(value) {
+  const text = String(value)
+
+  if (!Number.isFinite(toNumber(text))) {
+    return text
+  }
+
+  if (text.includes('e')) {
+    return text
+  }
+
+  const sign = text.startsWith('-') ? '-' : ''
+  const unsigned = sign ? text.slice(1) : text
+  const [integerPart, decimalPart] = unsigned.split('.')
+  const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+
+  return `${sign}${groupedInteger}${decimalPart === undefined ? '' : `.${decimalPart}`}`
 }
 
 function errorState(message) {
@@ -260,6 +279,7 @@ export function pressEquals(state) {
   if (state.pendingOperator) {
     const rightValue = state.isNewInput ? state.storedValue : toNumber(state.displayValue)
     const applied = applyPendingOperation(state, rightValue)
+    const expression = `${formatNumber(state.storedValue)} ${getOperatorLabel(state.pendingOperator)} ${formatNumber(rightValue)} =`
 
     if (applied.state.isError) {
       return applied.state
@@ -274,12 +294,17 @@ export function pressEquals(state) {
         operand: rightValue,
       },
       isNewInput: true,
+      completedEntry: {
+        expression,
+        result: applied.state.displayValue,
+      },
     }
   }
 
   if (state.lastOperation) {
     const leftValue = toNumber(state.displayValue)
     const result = calculate(leftValue, state.lastOperation.operator, state.lastOperation.operand)
+    const expression = `${formatNumber(leftValue)} ${getOperatorLabel(state.lastOperation.operator)} ${formatNumber(state.lastOperation.operand)} =`
 
     if (result.error) {
       return errorState(result.error)
@@ -289,12 +314,17 @@ export function pressEquals(state) {
       ...state,
       displayValue: formatNumber(result.value),
       isNewInput: true,
+      completedEntry: {
+        expression,
+        result: formatNumber(result.value),
+      },
     }
   }
 
   return {
     ...state,
     isNewInput: true,
+    completedEntry: null,
   }
 }
 
